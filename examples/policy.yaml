@@ -1,0 +1,10 @@
+tables:
+  users:
+    allow_ops:
+      - select
+      - update
+    required_filters:
+      - column: tenant_id
+    deny_columns:
+      - ssn
+      - password_hash

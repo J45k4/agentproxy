@@ -1,0 +1,16 @@
+tables:
+  reservations:
+    allow_ops:
+      - select
+      - update
+    required_filters:
+      - column: tenant_id
+    deny_columns:
+      - internal_notes
+  diners:
+    allow_ops:
+      - select
+    required_filters:
+      - column: tenant_id
+    deny_columns:
+      - vip_level

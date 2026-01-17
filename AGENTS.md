@@ -1,0 +1,1 @@
+- after changes always run cargo test --workspace
