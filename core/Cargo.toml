@@ -10,6 +10,8 @@ serde_json = "1"
 serde_yaml = "0.9"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 sqlparser = "0.43"
+rmcp = { version = "0.13", features = ["server"] }
+schemars = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 rusqlite = { version = "0.31", features = ["bundled"] }

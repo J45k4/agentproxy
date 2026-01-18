@@ -11,4 +11,5 @@ serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 reqwest = { version = "0.11", features = ["json"] }
 wgui = { git = "https://github.com/J45k4/wgui.git", rev = "daf29c83174478d77815ddf329c8753c780fa525", default-features = false, features = ["axum"] }
+rmcp = { version = "0.13", features = ["server", "transport-streamable-http-server"] }
 

@@ -1,10 +1,19 @@
-use agentproxy::{policy::load_policy, service};
+use agentproxy::{db::SqliteDb, mcp::AgentProxyMcp, policy::load_policy, service};
 use axum::Router;
 use reqwest::Client;
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+};
 use serde_json::json;
-use std::{collections::{HashSet, VecDeque}, error::Error, net::SocketAddr, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    error::Error,
+    net::SocketAddr,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{net::TcpListener, sync::Mutex};
-use wgui::{button, ClientEvent, text, text_input, vstack, Item, Wgui};
+use wgui::{ClientEvent, Item, Wgui, button, text, text_input, vstack};
 
 mod setup;
 
@@ -103,7 +112,10 @@ async fn run_wgui(wgui: Wgui) {
                     Ok(resp) => match resp.json::<serde_json::Value>().await {
                         Ok(json) => {
                             if json.get("ok").and_then(|v| v.as_bool()) == Some(true) {
-                                format!("Agent → preview {} (tables: {:?})", json["operation"], json["tables"])
+                                format!(
+                                    "Agent → preview {} (tables: {:?})",
+                                    json["operation"], json["tables"]
+                                )
                             } else {
                                 format!("Agent → error: {}", json["error"])
                             }
@@ -129,16 +141,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
     setup::ensure_schema(sqlite_path)?;
 
     let policy = load_policy("examples/puppyrestaurant/policy.yaml")?;
-    let state = service::AppState::new(policy);
+    let db = SqliteDb::new(sqlite_path)?;
+    let state = service::AppState::new(policy).with_db(std::sync::Arc::new(db));
     let wgui = Wgui::new_without_server();
     let wgui_router = wgui.router();
-    let router: Router = service::router(state).merge(wgui_router);
+    let mcp_service: StreamableHttpService<AgentProxyMcp, LocalSessionManager> =
+        StreamableHttpService::new(
+            {
+                let state = state.clone();
+                move || Ok(AgentProxyMcp::new(state.clone()))
+            },
+            Default::default(),
+            StreamableHttpServerConfig {
+                stateful_mode: true,
+                sse_keep_alive: Some(Duration::from_secs(15)),
+                ..Default::default()
+            },
+        );
+    let router: Router = service::router(state)
+        .merge(wgui_router)
+        .nest_service("/mcp", mcp_service);
 
     let addr: SocketAddr = "127.0.0.1:4000".parse()?;
     println!(
         "AgentProxy listening on http://{} (sqlite: {})",
         addr, sqlite_path
     );
+    println!("MCP streamable HTTP at http://{}/mcp", addr);
 
     tokio::spawn(run_wgui(wgui));
 
@@ -147,12 +176,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
-
-
-
-
-
-
-
-

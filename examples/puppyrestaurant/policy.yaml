@@ -3,6 +3,7 @@ roles:
     reservations:
       allow_ops:
         - select
+        - insert
       required_filters:
         - column: tenant_id
     menu_items:

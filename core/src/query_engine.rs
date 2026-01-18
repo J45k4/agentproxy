@@ -7,7 +7,7 @@ use sqlparser::{
 
 use crate::policy::{PolicyConfig, RequiredFilter, TablePolicy};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct QueryContext {
     pub actor: String,
     pub tenant_id: String,
@@ -15,19 +15,20 @@ pub struct QueryContext {
     pub role: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct SqlRequest {
     pub sql: String,
     pub context: QueryContext,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct PreviewResponse {
     pub ok: bool,
     pub preview_id: String,
     pub operation: String,
     pub tables: Vec<String>,
     pub rows_affected: u64,
+    pub rewritten_sql: String,
     pub warnings: Vec<String>,
 }
 
@@ -36,6 +37,7 @@ pub struct CommitResponse {
     pub ok: bool,
     pub preview_id: String,
     pub committed_at: chrono::DateTime<chrono::Utc>,
+    pub rows_affected: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -67,9 +69,9 @@ pub struct ParsedQuery {
 pub struct QueryEngine;
 
 impl QueryEngine {
-    pub fn evaluate_sql(&self, payload: &SqlRequest) -> Result<ParsedQuery, String> {
+    pub fn evaluate_sql(&self, payload: &SqlRequest) -> Result<(ParsedQuery, String), String> {
         let dialect = PostgreSqlDialect {};
-        let statements = Parser::parse_sql(&dialect, &payload.sql)
+        let mut statements = Parser::parse_sql(&dialect, &payload.sql)
             .map_err(|err| format!("SQL parse error: {err}"))?;
 
         if statements.len() != 1 {
@@ -77,17 +79,20 @@ impl QueryEngine {
         }
 
         let statement = statements
-            .into_iter()
-            .next()
+            .pop()
             .ok_or_else(|| "Missing SQL statement".to_string())?;
 
-        let (operation, tables, has_where) = analyze_statement(statement)?;
+        let (operation, tables, has_where) = analyze_statement(statement.clone())?;
+        let rewritten_sql = statement.to_string();
 
-        Ok(ParsedQuery {
-            operation,
-            tables,
-            has_where,
-        })
+        Ok((
+            ParsedQuery {
+                operation,
+                tables,
+                has_where,
+            },
+            rewritten_sql,
+        ))
     }
 
     pub fn enforce_rules(&self, payload: &SqlRequest, parsed: &ParsedQuery) -> Result<(), String> {
@@ -128,7 +133,10 @@ impl QueryEngine {
         table_policy: &TablePolicy,
     ) -> Result<(), String> {
         if !table_policy.allow_ops.is_empty()
-            && !table_policy.allow_ops.iter().any(|op| op == &parsed.operation)
+            && !table_policy
+                .allow_ops
+                .iter()
+                .any(|op| op == &parsed.operation)
         {
             return Err(format!(
                 "Operation '{}' is not allowed for table",
@@ -198,12 +206,16 @@ fn analyze_statement(statement: Statement) -> Result<(String, Vec<String>, bool)
             vec![table_name_to_string(&table_name)],
             true,
         )),
-        Statement::Update { table, selection, .. } => Ok((
+        Statement::Update {
+            table, selection, ..
+        } => Ok((
             "update".to_string(),
             vec![table_name_from_table_with_joins(&table)],
             selection.is_some(),
         )),
-        Statement::Delete { from, selection, .. } => {
+        Statement::Delete {
+            from, selection, ..
+        } => {
             let mut tables = Vec::new();
             if let Some(table) = from.first() {
                 tables.push(table_name_from_table_with_joins(table));
@@ -271,7 +283,7 @@ mod tests {
     fn blocks_delete_without_where() {
         let engine = QueryEngine::default();
         let payload = request("DELETE FROM users");
-        let parsed = engine.evaluate_sql(&payload).unwrap();
+        let (parsed, _sql) = engine.evaluate_sql(&payload).unwrap();
         let error = engine.enforce_rules(&payload, &parsed).unwrap_err();
         assert!(error.contains("WHERE clause"));
     }
@@ -280,7 +292,7 @@ mod tests {
     fn allows_delete_with_where() {
         let engine = QueryEngine::default();
         let payload = request("DELETE FROM users WHERE tenant_id = 'acme'");
-        let parsed = engine.evaluate_sql(&payload).unwrap();
+        let (parsed, _sql) = engine.evaluate_sql(&payload).unwrap();
         engine.enforce_rules(&payload, &parsed).unwrap();
     }
 
@@ -288,7 +300,7 @@ mod tests {
     fn blocks_missing_tenant_filter() {
         let engine = QueryEngine::default();
         let payload = request("SELECT * FROM users");
-        let parsed = engine.evaluate_sql(&payload).unwrap();
+        let (parsed, _sql) = engine.evaluate_sql(&payload).unwrap();
         let error = engine.enforce_rules(&payload, &parsed).unwrap_err();
         assert!(error.contains("tenant_id"));
     }
@@ -297,7 +309,7 @@ mod tests {
     fn extracts_table_for_update() {
         let engine = QueryEngine::default();
         let payload = request("UPDATE users SET name = 'Jane' WHERE tenant_id = 'acme'");
-        let parsed = engine.evaluate_sql(&payload).unwrap();
+        let (parsed, _sql) = engine.evaluate_sql(&payload).unwrap();
         assert_eq!(parsed.tables, vec!["users".to_string()]);
         assert!(parsed.has_where);
     }

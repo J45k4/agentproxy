@@ -64,14 +64,16 @@ impl std::error::Error for PolicyError {}
 
 pub fn load_policy(path: impl AsRef<Path>) -> Result<PolicyConfig, PolicyError> {
     let path = path.as_ref();
-    let content = fs::read_to_string(path)
-        .map_err(|err| PolicyError::ReadFailed(err.to_string()))?;
+    let content =
+        fs::read_to_string(path).map_err(|err| PolicyError::ReadFailed(err.to_string()))?;
 
     match path.extension().and_then(|ext| ext.to_str()) {
-        Some("yaml") | Some("yml") => serde_yaml::from_str(&content)
-            .map_err(|err| PolicyError::ParseFailed(err.to_string())),
-        Some("json") => serde_json::from_str(&content)
-            .map_err(|err| PolicyError::ParseFailed(err.to_string())),
+        Some("yaml") | Some("yml") => {
+            serde_yaml::from_str(&content).map_err(|err| PolicyError::ParseFailed(err.to_string()))
+        }
+        Some("json") => {
+            serde_json::from_str(&content).map_err(|err| PolicyError::ParseFailed(err.to_string()))
+        }
         _ => serde_json::from_str(&content)
             .or_else(|_| serde_yaml::from_str(&content))
             .map_err(|err| PolicyError::ParseFailed(err.to_string())),

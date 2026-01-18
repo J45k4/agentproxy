@@ -1,8 +1,10 @@
-use agentproxy::{policy::load_policy, service, service::AppState};
+use agentproxy::{mcp::AgentProxyMcp, policy::load_policy, service, service::AppState};
 use axum::Router;
 use clap::Parser;
-use tokio::net::TcpListener;
+use rmcp::ServiceExt;
+use rmcp::transport::stdio;
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
 
 #[derive(Debug, Parser)]
 #[command(name = "agentproxy", version, about = "AgentProxy CLI")]
@@ -13,6 +15,8 @@ struct Cli {
     listen: String,
     #[arg(long, default_value = "examples/puppyrestaurant/puppyrestaurant.db")]
     sqlite_path: String,
+    #[arg(long)]
+    mcp_stdio: bool,
 }
 
 #[tokio::main]
@@ -24,6 +28,15 @@ async fn main() {
     });
 
     let state = AppState::new(policy);
+
+    if cli.mcp_stdio {
+        let server = AgentProxyMcp::new(state);
+        if let Ok(service) = server.serve(stdio()).await {
+            let _ = service.waiting().await;
+        }
+        return;
+    }
+
     let router: Router = service::router(state);
 
     println!(
