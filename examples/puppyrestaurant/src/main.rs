@@ -1,9 +1,122 @@
 use agentproxy::{policy::load_policy, service};
 use axum::Router;
-use std::{error::Error, net::SocketAddr};
-use tokio::net::TcpListener;
+use reqwest::Client;
+use serde_json::json;
+use std::{collections::{HashSet, VecDeque}, error::Error, net::SocketAddr, sync::Arc};
+use tokio::{net::TcpListener, sync::Mutex};
+use wgui::{button, ClientEvent, text, text_input, vstack, Item, Wgui};
 
 mod setup;
+
+const INPUT_ID: u32 = 1;
+const SEND_ID: u32 = 2;
+
+#[derive(Default)]
+struct ChatState {
+    draft: String,
+    messages: VecDeque<String>,
+}
+
+impl ChatState {
+    fn push(&mut self, message: String) {
+        if self.messages.len() >= 8 {
+            self.messages.pop_front();
+        }
+        self.messages.push_back(message);
+    }
+}
+
+fn render(state: &ChatState) -> Item {
+    let mut body = Vec::new();
+    body.push(text("PuppyRestaurant Agent"));
+    body.push(text("Raw SQL previews only—no commits yet."));
+    for message in &state.messages {
+        body.push(
+            text(message)
+                .border("1px solid rgba(255,255,255,0.15)")
+                .padding(8)
+                .margin_top(4),
+        );
+    }
+    body.push(
+        text_input()
+            .id(INPUT_ID)
+            .svalue(&state.draft)
+            .placeholder("Type SQL to preview..."),
+    );
+    body.push(button("Send").id(SEND_ID));
+    vstack(body).into()
+}
+
+async fn run_wgui(wgui: Wgui) {
+    let mut wgui = wgui;
+    let mut clients = HashSet::new();
+    let state = Arc::new(Mutex::new(ChatState::default()));
+    let client = Client::new();
+
+    while let Some(event) = wgui.next().await {
+        match event {
+            ClientEvent::Connected { id } => {
+                clients.insert(id);
+                let view = state.lock().await;
+                wgui.render(id, render(&view)).await;
+            }
+            ClientEvent::Disconnected { id } => {
+                clients.remove(&id);
+            }
+            ClientEvent::OnTextChanged(event) if event.id == INPUT_ID => {
+                let mut view = state.lock().await;
+                view.draft = event.value;
+                for &client_id in &clients {
+                    wgui.render(client_id, render(&view)).await;
+                }
+            }
+            ClientEvent::OnClick(event) if event.id == SEND_ID => {
+                let mut view = state.lock().await;
+                let sql = view.draft.trim().to_string();
+                if sql.is_empty() {
+                    continue;
+                }
+                view.draft.clear();
+                view.push(format!("You → {sql}"));
+                drop(view);
+                let view = state.lock().await;
+                for &client_id in &clients {
+                    wgui.render(client_id, render(&view)).await;
+                }
+                drop(view);
+
+                let response = client
+                    .post("http://127.0.0.1:4000/sql/preview")
+                    .json(&json!({
+                        "sql": sql,
+                        "context": {"actor": "agent:web-ui", "tenant_id": "puppyrestaurant"}
+                    }))
+                    .send()
+                    .await;
+                let message = match response {
+                    Ok(resp) => match resp.json::<serde_json::Value>().await {
+                        Ok(json) => {
+                            if json.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+                                format!("Agent → preview {} (tables: {:?})", json["operation"], json["tables"])
+                            } else {
+                                format!("Agent → error: {}", json["error"])
+                            }
+                        }
+                        Err(err) => format!("Agent → parse error: {err}"),
+                    },
+                    Err(err) => format!("Agent → request failed: {err}"),
+                };
+                let mut view = state.lock().await;
+                view.push(message);
+                for &client_id in &clients {
+                    wgui.render(client_id, render(&view)).await;
+                }
+            }
+            _ => {}
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -12,15 +125,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let policy = load_policy("examples/puppyrestaurant/policy.yaml")?;
     let state = service::AppState::new(policy);
-    let router: Router = service::router(state);
+    let wgui = Wgui::new_without_server();
+    let wgui_router = wgui.router();
+    let router: Router = service::router(state).merge(wgui_router);
 
     let addr: SocketAddr = "127.0.0.1:4000".parse()?;
-    let listener = TcpListener::bind(addr).await?;
     println!(
-        "puppyrestaurant example running on http://{} (sqlite: {})",
+        "AgentProxy listening on http://{} (sqlite: {})",
         addr, sqlite_path
     );
 
+    tokio::spawn(run_wgui(wgui));
+
+    let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, router.into_make_service()).await?;
 
     Ok(())

@@ -1,5 +1,7 @@
 use agentproxy::{policy::load_policy, service, service::AppState};
+use axum::Router;
 use clap::Parser;
+use tokio::net::TcpListener;
 use std::net::SocketAddr;
 
 #[derive(Debug, Parser)]
@@ -22,7 +24,7 @@ async fn main() {
     });
 
     let state = AppState::new(policy);
-    let app = service::router(state);
+    let router: Router = service::router(state);
 
     println!(
         "AgentProxy listening on http://{} (sqlite: {})",
@@ -34,8 +36,8 @@ async fn main() {
         std::process::exit(1)
     });
 
-    axum::serve(tokio::net::TcpListener::bind(addr).await.unwrap(), app)
+    let listener = TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, router.into_make_service())
         .await
         .unwrap();
 }
-

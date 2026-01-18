@@ -5,7 +5,7 @@ Minimal Rust scaffold for an AgentProxy SQL preview/commit service.
 ## Run
 
 ```bash
-cargo run -p agentproxy -- --policy-file examples/policy.yaml --sqlite-path examples/puppyrestaurant/puppyrestaurant.db
+cargo run -p agentproxy-cli -- --policy-file examples/policy.yaml --sqlite-path examples/puppyrestaurant/puppyrestaurant.db
 ```
 
 The service listens on `http://127.0.0.1:3000` and loads policy config from `examples/policy.yaml` (override with `--policy-file`).
