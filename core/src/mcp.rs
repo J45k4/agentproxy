@@ -74,6 +74,21 @@ impl AgentProxyMcp {
         let state = self.state.read().await;
         Ok(CallToolResult::success(vec![Content::json(&state.policy)?]))
     }
+
+    async fn schema_internal(&self) -> Result<CallToolResult, McpError> {
+        let state = self.state.read().await;
+        let db = state.db.as_ref().ok_or_else(|| {
+            McpError::new(
+                ErrorCode::RESOURCE_NOT_FOUND,
+                "No database configured",
+                None,
+            )
+        })?;
+        let schema = db
+            .describe_schema()
+            .map_err(|message| McpError::new(ErrorCode::INTERNAL_ERROR, message, None))?;
+        Ok(CallToolResult::success(vec![Content::json(schema)?]))
+    }
 }
 
 #[tool_router]
@@ -111,14 +126,12 @@ impl AgentProxyMcp {
         self.policy_internal().await
     }
 
-    #[tool(description = "Describe schema tables (placeholder)")]
+    #[tool(description = "Describe schema tables")]
     async fn schema_describe(
         &self,
         Parameters(_): Parameters<EmptyRequest>,
     ) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text(
-            "Schema introspection not wired yet",
-        )]))
+        self.schema_internal().await
     }
 }
 
