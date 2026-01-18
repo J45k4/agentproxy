@@ -149,6 +149,10 @@ impl QueryEngine {
             return Err("Query references denied columns".to_string());
         }
 
+        for expression in &table_policy.required_expressions {
+            ensure_required_expression(payload, expression)?;
+        }
+
         Ok(())
     }
 }
@@ -161,6 +165,25 @@ fn ensure_required_filter(payload: &SqlRequest, required: &RequiredFilter) -> Re
             "Missing required filter on column '{}'",
             required.column
         ))
+    }
+}
+
+fn ensure_required_expression(payload: &SqlRequest, expression: &str) -> Result<(), String> {
+    let lowered = expression.to_lowercase();
+    let normalized = lowered
+        .replace("===", "=")
+        .replace("==", "=")
+        .replace("&&", "and")
+        .replace("||", "or")
+        .replace("true", "true")
+        .replace("false", "false")
+        .replace(" ", "");
+
+    let sql = payload.sql.to_lowercase().replace(' ', "");
+    if sql.contains(&normalized) {
+        Ok(())
+    } else {
+        Err(format!("Missing required expression '{expression}'"))
     }
 }
 

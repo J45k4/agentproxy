@@ -17,6 +17,8 @@ pub struct TablePolicy {
     pub required_filters: Vec<RequiredFilter>,
     #[serde(default)]
     pub deny_columns: Vec<String>,
+    #[serde(default)]
+    pub required_expressions: Vec<String>,
 }
 
 impl PolicyConfig {

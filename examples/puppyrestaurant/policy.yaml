@@ -16,6 +16,8 @@ roles:
         - update
       required_filters:
         - column: tenant_id
+      required_expressions:
+        - "carts.status == 'active'"
     cart_items:
       allow_ops:
         - select
@@ -24,12 +26,16 @@ roles:
         - delete
       required_filters:
         - column: tenant_id
+      required_expressions:
+        - "cart_items.quantity > 0"
     orders:
       allow_ops:
         - select
         - insert
       required_filters:
         - column: tenant_id
+      required_expressions:
+        - "orders.status == 'open'"
     order_items:
       allow_ops:
         - select
@@ -42,6 +48,8 @@ roles:
         - insert
       required_filters:
         - column: tenant_id
+      required_expressions:
+        - "payments.status == 'pending'"
       deny_columns:
         - provider
   employee:
