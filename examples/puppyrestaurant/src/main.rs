@@ -30,6 +30,7 @@ fn render(state: &ChatState) -> Item {
     let mut body = Vec::new();
     body.push(text("PuppyRestaurant Agent"));
     body.push(text("Raw SQL previews only—no commits yet."));
+    body.push(text("Role: customer (limited to ordering + payments)."));
     for message in &state.messages {
         body.push(
             text(message)
@@ -90,7 +91,11 @@ async fn run_wgui(wgui: Wgui) {
                     .post("http://127.0.0.1:4000/sql/preview")
                     .json(&json!({
                         "sql": sql,
-                        "context": {"actor": "agent:web-ui", "tenant_id": "puppyrestaurant"}
+                        "context": {
+                            "actor": "agent:web-ui",
+                            "tenant_id": "puppyrestaurant",
+                            "role": "customer"
+                        }
                     }))
                     .send()
                     .await;

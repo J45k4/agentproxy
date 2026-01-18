@@ -1,16 +1,98 @@
-tables:
-  reservations:
-    allow_ops:
-      - select
-      - update
-    required_filters:
-      - column: tenant_id
-    deny_columns:
-      - internal_notes
-  diners:
-    allow_ops:
-      - select
-    required_filters:
-      - column: tenant_id
-    deny_columns:
-      - vip_level
+roles:
+  customer:
+    reservations:
+      allow_ops:
+        - select
+      required_filters:
+        - column: tenant_id
+    menu_items:
+      allow_ops:
+        - select
+      required_filters:
+        - column: tenant_id
+    carts:
+      allow_ops:
+        - select
+        - update
+      required_filters:
+        - column: tenant_id
+    cart_items:
+      allow_ops:
+        - select
+        - insert
+        - update
+        - delete
+      required_filters:
+        - column: tenant_id
+    orders:
+      allow_ops:
+        - select
+        - insert
+      required_filters:
+        - column: tenant_id
+    order_items:
+      allow_ops:
+        - select
+        - insert
+      required_filters:
+        - column: tenant_id
+    payments:
+      allow_ops:
+        - select
+        - insert
+      required_filters:
+        - column: tenant_id
+      deny_columns:
+        - provider
+  employee:
+    reservations:
+      allow_ops:
+        - select
+        - update
+      required_filters:
+        - column: tenant_id
+    diners:
+      allow_ops:
+        - select
+      required_filters:
+        - column: tenant_id
+      deny_columns:
+        - vip_level
+    menu_items:
+      allow_ops:
+        - select
+        - update
+        - insert
+      required_filters:
+        - column: tenant_id
+    orders:
+      allow_ops:
+        - select
+        - update
+      required_filters:
+        - column: tenant_id
+    order_items:
+      allow_ops:
+        - select
+        - update
+      required_filters:
+        - column: tenant_id
+    carts:
+      allow_ops:
+        - select
+        - update
+      required_filters:
+        - column: tenant_id
+    cart_items:
+      allow_ops:
+        - select
+        - update
+      required_filters:
+        - column: tenant_id
+    payments:
+      allow_ops:
+        - select
+      required_filters:
+        - column: tenant_id
+      deny_columns:
+        - provider

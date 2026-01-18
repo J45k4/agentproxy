@@ -11,6 +11,8 @@ use crate::policy::{PolicyConfig, RequiredFilter, TablePolicy};
 pub struct QueryContext {
     pub actor: String,
     pub tenant_id: String,
+    #[serde(default)]
+    pub role: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -109,8 +111,9 @@ impl QueryEngine {
         parsed: &ParsedQuery,
         policy: &PolicyConfig,
     ) -> Result<(), String> {
+        let role = payload.context.role.as_str();
         for table in &parsed.tables {
-            if let Some(table_policy) = policy.tables.get(table) {
+            if let Some(table_policy) = policy.table_policy_for(role, table) {
                 self.validate_table_policy(payload, parsed, table_policy)?;
             }
         }
@@ -228,6 +231,7 @@ mod tests {
             context: QueryContext {
                 actor: "agent:test".to_string(),
                 tenant_id: "acme".to_string(),
+                role: "employee".to_string(),
             },
         }
     }

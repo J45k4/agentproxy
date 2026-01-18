@@ -3,6 +3,9 @@ use std::{collections::HashMap, fs, path::Path};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PolicyConfig {
+    #[serde(default)]
+    pub roles: HashMap<String, HashMap<String, TablePolicy>>,
+    #[serde(default)]
     pub tables: HashMap<String, TablePolicy>,
 }
 
@@ -14,6 +17,19 @@ pub struct TablePolicy {
     pub required_filters: Vec<RequiredFilter>,
     #[serde(default)]
     pub deny_columns: Vec<String>,
+}
+
+impl PolicyConfig {
+    pub fn table_policy_for(&self, role: &str, table: &str) -> Option<&TablePolicy> {
+        if !role.is_empty() {
+            if let Some(role_tables) = self.roles.get(role) {
+                if let Some(table_policy) = role_tables.get(table) {
+                    return Some(table_policy);
+                }
+            }
+        }
+        self.tables.get(table)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
